@@ -24,7 +24,7 @@
 <summary>关于这些数据的来源</summary>
 
 - **明日方舟**：通过森空岛（Skland）账号接口获取，展示等级、入职天数、干员数量、练度分布、主线进度、理智等。
-- **明日方舟：终末地**：通过 [Enka.Network](https://enka.network/?ef) 公开接口获取，仅包含游戏内「展示柜」中公开的角色。
+- **明日方舟：终末地**：通过 [Enka.Network](https://enka.network/?ef) 公开接口获取，展示等级、世界等级、干员/武器/档案数量等统计。
 
 </details>
 
