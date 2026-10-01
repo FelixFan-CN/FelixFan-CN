@@ -4,17 +4,16 @@
   - 一张游戏立绘铺满整张卡作为底图
   - 只用白色文字，不加任何色块、边框、图标
   - 左上角：昵称 + Lv.xx，下一行 UID
-  - 底部：一排「大号数字 + 小标签」
-  - 可读性靠的是「文字区域局部模糊 + 柔化压暗」，而不是把整张图压黑：
-    在昵称区和数据行下面做一块边缘羽化的毛玻璃，底图其余部分保持清晰
+  - 底部：一排「大号数字 + 小标签」，等宽列从左侧紧凑排列，右侧留给立绘
+  - 可读性靠「左侧渐隐 + 底部渐隐 + 文字投影」，不做任何模糊处理
 
 底图放在 assets/ 下，命名 arknights-bg.* / endfield-bg.*（png/jpg/webp 均可）。
-建议提供 3:1 的宽图；若不是 3:1，会以右侧为锚点裁切（左侧本就被处理过）。
+建议提供 3:1 的宽图；若不是 3:1，会以右侧为锚点裁切（左侧本就被渐隐处理）。
 """
 
 import os
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 
 # ---------- 画布 ----------
 CARD_W = 1200
@@ -31,24 +30,17 @@ STAT_NUMBER_Y = 282
 STAT_NUMBER_SIZE = 42
 STAT_LABEL_Y = 342
 STAT_LABEL_SIZE = 22
+STAT_COLUMN_WIDTH = 152  # 每个数据项的等宽列宽：等宽保证对齐，收窄保证紧凑
 
 WHITE = (255, 255, 255)
-SHADOW_ALPHA = 150
+SHADOW_ALPHA = 200
 SHADOW_OFFSET = 2
 
-# ---------- 文字区域的局部模糊（保证白字可读） ----------
-# 昵称 + UID 所在区域，以及底部数据行所在区域
-# 面板刻意向画布外扩，只让朝内的边缘羽化，避免画布边角出现生硬的圆角
-TEXT_PANELS = [
-    (-80, -80, 720, 152),
-    (-80, 250, CARD_W + 80, CARD_H + 80),
-]
-PANEL_FEATHER = 30      # 面板边缘羽化半径，避免出现生硬的矩形边界
-TEXT_BLUR_RADIUS = 12   # 面板内的模糊强度
-TEXT_SHADE = 0.52       # 面板内的压暗强度（0 不压暗，1 全黑）
-
-# 全局只保留一层很轻的左侧渐隐，保证整体视觉不失衡
-GLOBAL_FADE = [(0.0, 0.46), (0.5, 0.20), (1.0, 0.02)]
+# ---------- 渐隐遮罩（保证白字可读） ----------
+# 左侧横向渐隐：昵称、UID 和整排数据都落在这一侧
+LEFT_FADE = [(0.0, 0.80), (0.42, 0.52), (0.75, 0.12), (1.0, 0.03)]
+# 底部纵向渐隐：托住最下面一排数字（比例从底部 0 到顶部 1）
+BOTTOM_FADE = [(0.0, 0.72), (0.20, 0.38), (0.52, 0.0)]
 
 # 字体候选：优先用 workflow 下载的思源黑体，其次回退到系统字体（便于本机调试）
 FONT_PATHS = [
@@ -110,13 +102,16 @@ def _horizontal_fade(width, height, stops):
     return row.resize((width, height))
 
 
-def _soft_mask(size, boxes, feather):
-    """把若干矩形做成一张边缘羽化的遮罩，用于限定局部模糊的范围。"""
-    mask = Image.new("L", size, 0)
-    draw = ImageDraw.Draw(mask)
-    for box in boxes:
-        draw.rounded_rectangle(box, radius=28, fill=255)
-    return mask.filter(ImageFilter.GaussianBlur(feather))
+def _vertical_fade(width, height, stops):
+    """从下到上的黑色渐隐遮罩，托住底部一排数字。"""
+    column = Image.new("RGBA", (1, height))
+    pixels = column.load()
+    for y in range(height):
+        # 比例从底部 0 到顶部 1
+        ratio = 1 - y / max(1, height - 1)
+        alpha = int(255 * _lerp_stops(stops, ratio))
+        pixels[0, y] = (0, 0, 0, max(0, min(255, alpha)))
+    return column.resize((width, height))
 
 
 def _cover(image, size, anchor="right"):
@@ -159,17 +154,9 @@ def _base_canvas(bg_path):
             pixels[0, y] = (shade, shade + 4, shade + 10, 255)
         canvas = top.resize((CARD_W, CARD_H))
 
-    # 一层很轻的整体左侧渐隐
-    canvas.alpha_composite(_horizontal_fade(CARD_W, CARD_H, GLOBAL_FADE))
-
-    # 文字区域：局部模糊 + 柔化压暗，其余部分保持清晰
-    mask = _soft_mask((CARD_W, CARD_H), TEXT_PANELS, PANEL_FEATHER)
-    blurred = canvas.filter(ImageFilter.GaussianBlur(TEXT_BLUR_RADIUS))
-    canvas = Image.composite(blurred, canvas, mask)
-
-    shade = Image.new("RGBA", (CARD_W, CARD_H), (0, 0, 0, 0))
-    shade.putalpha(mask.point(lambda value: int(value * TEXT_SHADE)))
-    canvas.alpha_composite(shade)
+    # 左侧渐隐 + 底部渐隐
+    canvas.alpha_composite(_horizontal_fade(CARD_W, CARD_H, LEFT_FADE))
+    canvas.alpha_composite(_vertical_fade(CARD_W, CARD_H, BOTTOM_FADE))
     return canvas
 
 
@@ -230,10 +217,9 @@ def render_card(out_path, game, nickname, level, uid, raw_stats):
 
     # ---- 底部：一排「大号数字 + 小标签」 ----
     if stats:
-        # 等宽列：把内容区均分，保证每一项占据同样的宽度、整排左边缘与上方昵称对齐
-        pitch = (CARD_W - PAD * 2) / len(stats)
+        # 等宽列从左侧紧凑排列：列宽固定保证对齐，不铺满卡片，右侧留给立绘
         for index, (label, value) in enumerate(stats):
-            x = int(PAD + index * pitch)
+            x = PAD + index * STAT_COLUMN_WIDTH
             put(x, STAT_NUMBER_Y, value, font_number, 255)
             put(x, STAT_LABEL_Y, label, font_label, 185)
 
