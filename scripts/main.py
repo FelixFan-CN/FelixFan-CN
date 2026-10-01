@@ -51,7 +51,7 @@ def generate_endfield(section):
         return None
     payload = endfield_api.fetch_endfield(uid)
     summary = endfield_api.summarize(payload)
-    print(f"[终末地] 拉到数据：{summary['nickname']}，展示角色 {summary['character_count']} 名")
+    print(f"[终末地] 拉到数据：{summary['nickname']}，干员 {summary['character_count']} 名")
     return render.render_endfield(
         summary, os.path.join(ASSETS_DIR, "endfield-card.png")
     )

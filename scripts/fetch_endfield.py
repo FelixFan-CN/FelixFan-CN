@@ -1,8 +1,16 @@
 """终末地玩家数据：走 Enka.Network 公开接口。
 
 Enka 只需 UID，不需要森空岛登录凭证，因此终末地这条路没有凭证过期问题。
-代价是只能拿到玩家在游戏内「展示柜」中公开的角色，而非完整名册。
+UID 取游戏内 9 位账号 ID（森空岛绑定列表里的 roleId）。
+
+响应结构（已对真实账号验证）：
+    { "playerInfo": { "businessCard": { name, signature, adventureLevel,
+      worldLevel, shortId, statistic: {charNum, weaponNum, docNum},
+      achievement: {display: [...]}, charList: [{templateId, level}] } },
+      "uid": "...", "region": "CN" }
 """
+
+import time
 
 import requests
 
@@ -40,37 +48,35 @@ def _pick(mapping, *keys, default=None):
     return default
 
 
+def _days_since(timestamp):
+    if not timestamp:
+        return None
+    return max(0, int((time.time() - int(timestamp)) // 86400))
+
+
 def summarize(payload):
     """把 Enka 原始响应整理成渲染层需要的扁平结构。"""
-    player = payload.get("playerInfo") or payload.get("player") or {}
+    player = payload.get("playerInfo") or {}
+    card = player.get("businessCard") or player
+    statistic = card.get("statistic") or {}
+    achievement = card.get("achievement") or {}
+    showcase = card.get("charList") or []
 
-    showcase = (
-        payload.get("avatarInfoList")
-        or payload.get("showcase")
-        or payload.get("chars")
-        or []
-    )
-
-    characters = []
-    for entry in showcase:
-        if not isinstance(entry, dict):
-            continue
-        characters.append(
-            {
-                "name": _pick(entry, "name", "nickname", "charName", default="未知"),
-                "level": _pick(entry, "level", "lv", default=""),
-                "rarity": _pick(entry, "rarity", "star", "quality", default=""),
-                "profession": _pick(entry, "profession", "job", "class", default=""),
-            }
-        )
+    display = achievement.get("display") or []
+    info_list = achievement.get("infoList") or []
+    achievement_count = len(display) or len(info_list)
 
     return {
-        "nickname": _pick(player, "nickname", "name", default="开拓者"),
-        "level": _pick(player, "level", "lv", default=""),
-        "signature": _pick(player, "signature", "sign", default=""),
-        "world_level": _pick(player, "worldLevel", "world_level", default=""),
-        "achievement": _pick(player, "achievement", "achievements", default=""),
-        "uid": _pick(player, "uid", default=""),
-        "characters": characters,
-        "character_count": len(characters),
+        "nickname": _pick(card, "name", "nickname", default="管理员"),
+        "level": _pick(card, "adventureLevel", "level", default=""),
+        "world_level": _pick(card, "worldLevel", default=""),
+        "signature": _pick(card, "signature", default=""),
+        "short_id": _pick(card, "shortId", default=""),
+        "uid": _pick(card, "platformRoleId", default=_pick(payload, "uid", default="")),
+        "play_days": _days_since(card.get("createTime")),
+        "character_count": _pick(statistic, "charNum", default=None),
+        "weapon_count": _pick(statistic, "weaponNum", default=None),
+        "doc_count": _pick(statistic, "docNum", default=None),
+        "achievement": achievement_count or None,
+        "showcase_count": len(showcase) or None,
     }

@@ -194,20 +194,13 @@ def render_arknights(summary, out_path):
             ("精英二", _format(summary.get("elite_two_count"))),
             ("主线进度", _format(summary.get("main_stage"))),
             ("当前理智", _format(summary.get("ap"))),
-            ("家具保有", _format(summary.get("furniture"))),
+            ("皮肤保有", _format(summary.get("skin_count"))),
         ],
     )
 
 
 def render_endfield(summary, out_path):
     """终末地名片。"""
-    characters = summary.get("characters") or []
-    chips = []
-    for char in characters:
-        name = char.get("name") or "未知"
-        level = char.get("level")
-        chips.append(f"{name} Lv.{level}" if level else name)
-
     return render_card(
         out_path=out_path,
         badge="明日方舟：终末地",
@@ -219,9 +212,9 @@ def render_endfield(summary, out_path):
         raw_tiles=[
             ("等级", _format(summary.get("level"))),
             ("世界等级", _format(summary.get("world_level"))),
-            ("展示角色", _format(summary.get("character_count"))),
-            ("成就", _format(summary.get("achievement"))),
+            ("干员总数", _format(summary.get("character_count"))),
+            ("武器总数", _format(summary.get("weapon_count"))),
+            ("档案总数", _format(summary.get("doc_count"))),
+            ("展示角色", _format(summary.get("showcase_count"))),
         ],
-        chips_title="展示柜角色",
-        chips=chips,
     )
