@@ -5,16 +5,16 @@
   - 只用白色文字，不加任何色块、边框、图标
   - 左上角：昵称 + Lv.xx，下一行 UID
   - 底部：一排「大号数字 + 小标签」
-  - 为了让白字在任何底图上都可读，左侧与底部各叠一层由深到透明的黑色渐变，
-    并给文字加一层淡淡的黑色投影
+  - 可读性靠的是「文字区域局部模糊 + 柔化压暗」，而不是把整张图压黑：
+    在昵称区和数据行下面做一块边缘羽化的毛玻璃，底图其余部分保持清晰
 
 底图放在 assets/ 下，命名 arknights-bg.* / endfield-bg.*（png/jpg/webp 均可）。
-建议提供 3:1 的宽图；若不是 3:1，会以右侧为锚点裁切（左侧本就被渐变遮住）。
+建议提供 3:1 的宽图；若不是 3:1，会以右侧为锚点裁切（左侧本就被处理过）。
 """
 
 import os
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 # ---------- 画布 ----------
 CARD_W = 1200
@@ -36,6 +36,20 @@ STAT_AREA_RATIO = 0.72  # 底部一排统计只占左侧这些宽度，右侧留
 WHITE = (255, 255, 255)
 SHADOW_ALPHA = 150
 SHADOW_OFFSET = 2
+
+# ---------- 文字区域的局部模糊（保证白字可读） ----------
+# 昵称 + UID 所在区域，以及底部数据行所在区域
+# 面板刻意向画布外扩，只让朝内的边缘羽化，避免画布边角出现生硬的圆角
+TEXT_PANELS = [
+    (-80, -80, 720, 152),
+    (-80, 250, CARD_W + 80, CARD_H + 80),
+]
+PANEL_FEATHER = 30      # 面板边缘羽化半径，避免出现生硬的矩形边界
+TEXT_BLUR_RADIUS = 12   # 面板内的模糊强度
+TEXT_SHADE = 0.52       # 面板内的压暗强度（0 不压暗，1 全黑）
+
+# 全局只保留一层很轻的左侧渐隐，保证整体视觉不失衡
+GLOBAL_FADE = [(0.0, 0.46), (0.5, 0.20), (1.0, 0.02)]
 
 # 字体候选：优先用 workflow 下载的思源黑体，其次回退到系统字体（便于本机调试）
 FONT_PATHS = [
@@ -97,16 +111,13 @@ def _horizontal_fade(width, height, stops):
     return row.resize((width, height))
 
 
-def _vertical_fade(width, height, stops):
-    """从下到上的黑色渐变遮罩，保证底部一排数字可读。"""
-    column = Image.new("RGBA", (1, height))
-    pixels = column.load()
-    for y in range(height):
-        # 比例从底部 0 到顶部 1
-        ratio = 1 - y / max(1, height - 1)
-        alpha = int(255 * _lerp_stops(stops, ratio))
-        pixels[0, y] = (0, 0, 0, max(0, min(255, alpha)))
-    return column.resize((width, height))
+def _soft_mask(size, boxes, feather):
+    """把若干矩形做成一张边缘羽化的遮罩，用于限定局部模糊的范围。"""
+    mask = Image.new("L", size, 0)
+    draw = ImageDraw.Draw(mask)
+    for box in boxes:
+        draw.rounded_rectangle(box, radius=28, fill=255)
+    return mask.filter(ImageFilter.GaussianBlur(feather))
 
 
 def _cover(image, size, anchor="right"):
@@ -149,13 +160,17 @@ def _base_canvas(bg_path):
             pixels[0, y] = (shade, shade + 4, shade + 10, 255)
         canvas = top.resize((CARD_W, CARD_H))
 
-    # 左侧主渐变 + 底部次渐变
-    canvas.alpha_composite(
-        _horizontal_fade(CARD_W, CARD_H, [(0.0, 0.92), (0.45, 0.62), (0.72, 0.14), (1.0, 0.05)])
-    )
-    canvas.alpha_composite(
-        _vertical_fade(CARD_W, CARD_H, [(0.0, 0.85), (0.22, 0.45), (0.5, 0.0)])
-    )
+    # 一层很轻的整体左侧渐隐
+    canvas.alpha_composite(_horizontal_fade(CARD_W, CARD_H, GLOBAL_FADE))
+
+    # 文字区域：局部模糊 + 柔化压暗，其余部分保持清晰
+    mask = _soft_mask((CARD_W, CARD_H), TEXT_PANELS, PANEL_FEATHER)
+    blurred = canvas.filter(ImageFilter.GaussianBlur(TEXT_BLUR_RADIUS))
+    canvas = Image.composite(blurred, canvas, mask)
+
+    shade = Image.new("RGBA", (CARD_W, CARD_H), (0, 0, 0, 0))
+    shade.putalpha(mask.point(lambda value: int(value * TEXT_SHADE)))
+    canvas.alpha_composite(shade)
     return canvas
 
 
