@@ -1,12 +1,21 @@
 <!--
-  主页 README。名片图片由 .github/workflows/profile-cards.yml 每天自动刷新，
-  数据源：明日方舟走森空岛（需仓库 Secret: SKLAND_TOKEN），终末地走 Enka（只需 UID）。
-  想改展示哪些数据，编辑 scripts/render.py 里的 raw_tiles 即可。
+  主页 README。
+  - 3D 贡献图由 .github/workflows/3d-contribute.yml 每天自动刷新
+  - 游戏名片由 .github/workflows/profile-cards.yml 每天自动刷新
+    （明日方舟走森空岛，需仓库 Secret: SKLAND_TOKEN；终末地走 Enka，只需 UID）
+  想改名片展示哪些数据，编辑 scripts/render.py 里的 raw_tiles 即可。
 -->
 
 ## 你好 👋
 
 我是 FelixFan，一个喜欢折腾各种东西的开发者。
+
+## 总览
+
+![](profile-3d-contrib/profile-night-green.svg)
+
+![FelixFan-CN's Stats](https://github-readme-stats.vercel.app/api?username=FelixFan-CN&theme=vue-dark&show_icons=true&hide_border=true&count_private=true)
+![FelixFan-CN's Streak](https://streak-stats.demolab.com/?user=FelixFan-CN&theme=vue-dark&hide_border=true)
 
 ## 游戏名片
 
@@ -27,11 +36,6 @@
 - **明日方舟：终末地**：通过 [Enka.Network](https://enka.network/?ef) 公开接口获取，展示等级、世界等级、干员/武器/档案数量等统计。
 
 </details>
-
-## 总览
-
-![FelixFan-CN's Stats](https://github-readme-stats.vercel.app/api?username=FelixFan-CN&theme=vue-dark&show_icons=true&hide_border=true&count_private=true)
-![FelixFan-CN's Streak](https://streak-stats.demolab.com/?user=FelixFan-CN&theme=vue-dark&hide_border=true)
 
 ## 与我联系
 
