@@ -1,39 +1,41 @@
-"""Pillow 名片渲染。
+"""Pillow 名片渲染（hoyocard 风格）。
 
-输出为深色圆角卡片 PNG（四角透明），配色对齐 GitHub Dark 主题，
-以便和主页上的 3D 贡献图、Stats 卡片在视觉上是一整套。
+设计原则：
+  - 一张游戏立绘铺满整张卡作为底图
+  - 只用白色文字，不加任何色块、边框、图标
+  - 左上角：昵称 + Lv.xx，下一行 UID
+  - 底部：一排「大号数字 + 小标签」
+  - 为了让白字在任何底图上都可读，左侧与底部各叠一层由深到透明的黑色渐变，
+    并给文字加一层淡淡的黑色投影
 
-设计要点：
-  - 顶部用强调色做一层柔和光晕渐变，避免整块死黑
-  - 左侧头像圈取昵称首字，形成视觉落点
-  - 数据格只保留「标签 + 大号数值 + 强调色下划线」，减少表格感
-  - 所有形状层按 4 倍超采样绘制后缩放，保证圆角与圆形的边缘平滑
+底图放在 assets/ 下，命名 arknights-bg.* / endfield-bg.*（png/jpg/webp 均可）。
+建议提供 3:1 的宽图；若不是 3:1，会以右侧为锚点裁切（左侧本就被渐变遮住）。
 """
 
 import os
 
 from PIL import Image, ImageDraw, ImageFont
 
-# ---------- 配色（GitHub Dark） ----------
-BG = (13, 17, 23)
-PANEL = (24, 30, 39)
-PANEL_BORDER = (40, 47, 57)
-FG = (230, 237, 243)
-MUTED = (139, 148, 158)
-ACCENT_ARK = (57, 211, 83)  # 明日方舟：GitHub 绿
-ACCENT_EF = (88, 166, 255)  # 终末地：GitHub 蓝
+# ---------- 画布 ----------
+CARD_W = 1200
+CARD_H = 400
+RATIO = CARD_W / CARD_H  # 3:1
 
-# ---------- 布局 ----------
-CARD_W = 880
-RADIUS = 20
-PAD = 36
-AVATAR = 76
-TILE_H = 92
-TILE_GAP = 14
-TILE_COLUMNS = 4
-GLOW_H = 170          # 顶部光晕高度
-GAP_AFTER_HEADER = 28
-GAP_BEFORE_FOOTER = 24
+PAD = 40
+NAME_Y = 30
+NAME_SIZE = 40
+LEVEL_SIZE = 22
+UID_Y = 88
+UID_SIZE = 18
+STAT_NUMBER_Y = 292
+STAT_NUMBER_SIZE = 42
+STAT_LABEL_Y = 350
+STAT_LABEL_SIZE = 16
+STAT_AREA_RATIO = 0.72  # 底部一排统计只占左侧这些宽度，右侧留给立绘
+
+WHITE = (255, 255, 255)
+SHADOW_ALPHA = 150
+SHADOW_OFFSET = 2
 
 # 字体候选：优先用 workflow 下载的思源黑体，其次回退到系统字体（便于本机调试）
 FONT_PATHS = [
@@ -41,6 +43,22 @@ FONT_PATHS = [
     (r"C:\Windows\Fonts\msyhbd.ttc", r"C:\Windows\Fonts\msyh.ttc"),
     ("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
 ]
+
+# 底图候选路径（按顺序探测，支持多种扩展名）
+BACKGROUNDS = {
+    "arknights": [
+        "assets/arknights-bg.png",
+        "assets/arknights-bg.jpg",
+        "assets/arknights-bg.jpeg",
+        "assets/arknights-bg.webp",
+    ],
+    "endfield": [
+        "assets/endfield-bg.png",
+        "assets/endfield-bg.jpg",
+        "assets/endfield-bg.jpeg",
+        "assets/endfield-bg.webp",
+    ],
+}
 
 
 def _load_font(size, bold=False):
@@ -57,245 +75,195 @@ def _load_font(size, bold=False):
     )
 
 
-def _blend(color_a, color_b, ratio):
-    """按 ratio 把 color_a 混向 color_b（0 = 全 a，1 = 全 b）。"""
-    return tuple(
-        int(round(a + (b - a) * ratio)) for a, b in zip(color_a, color_b)
-    )
+def _lerp_stops(stops, ratio):
+    """在 [(位置比例, 值)] 之间做线性插值。"""
+    if ratio <= stops[0][0]:
+        return stops[0][1]
+    for (p0, v0), (p1, v1) in zip(stops, stops[1:]):
+        if ratio <= p1:
+            span = p1 - p0
+            t = 0 if span == 0 else (ratio - p0) / span
+            return v0 + (v1 - v0) * t
+    return stops[-1][1]
 
 
-def _rounded_layer(size, radius, fill=None, outline=None, width=1, ss=4):
-    """在高分辨率下画圆角形状再缩小，得到平滑边缘。"""
-    w, h = size
-    layer = Image.new("RGBA", (w * ss, h * ss), (0, 0, 0, 0))
-    ImageDraw.Draw(layer).rounded_rectangle(
-        [0, 0, w * ss - 1, h * ss - 1],
-        radius=radius * ss,
-        fill=fill,
-        outline=outline,
-        width=width * ss,
-    )
-    return layer.resize((w, h), Image.LANCZOS)
+def _horizontal_fade(width, height, stops):
+    """从左到右的黑色渐变遮罩，让左侧白字在任何底图上都可读。"""
+    row = Image.new("RGBA", (width, 1))
+    pixels = row.load()
+    for x in range(width):
+        alpha = int(255 * _lerp_stops(stops, x / max(1, width - 1)))
+        pixels[x, 0] = (0, 0, 0, max(0, min(255, alpha)))
+    return row.resize((width, height))
 
 
-def _ellipse_layer(size, fill=None, outline=None, width=1, ss=4):
-    w, h = size
-    layer = Image.new("RGBA", (w * ss, h * ss), (0, 0, 0, 0))
-    ImageDraw.Draw(layer).ellipse(
-        [0, 0, w * ss - 1, h * ss - 1],
-        fill=fill,
-        outline=outline,
-        width=width * ss,
-    )
-    return layer.resize((w, h), Image.LANCZOS)
-
-
-def _background(width, height, accent):
-    """纵向渐变：顶部带强调色光晕，向下迅速沉回底色。"""
-    glow = _blend(BG, accent, 0.16)
-    column = Image.new("RGB", (1, height))
+def _vertical_fade(width, height, stops):
+    """从下到上的黑色渐变遮罩，保证底部一排数字可读。"""
+    column = Image.new("RGBA", (1, height))
+    pixels = column.load()
     for y in range(height):
-        if y < GLOW_H:
-            # 用幂次让光晕衰减更快，形成「发光」而非「渐层」
-            ratio = (y / GLOW_H) ** 1.7
-            column.putpixel((0, y), _blend(glow, BG, ratio))
-        else:
-            column.putpixel((0, y), BG)
-    return column.resize((width, height), Image.BILINEAR).convert("RGBA")
+        # 比例从底部 0 到顶部 1
+        ratio = 1 - y / max(1, height - 1)
+        alpha = int(255 * _lerp_stops(stops, ratio))
+        pixels[0, y] = (0, 0, 0, max(0, min(255, alpha)))
+    return column.resize((width, height))
 
 
-def _format(value, suffix=""):
-    if value is None:
-        return None
-    return f"{value}{suffix}"
+def _cover(image, size, anchor="right"):
+    """等比缩放后裁切填满目标尺寸；横向以右侧为锚，避免裁掉立绘主体。"""
+    target_w, target_h = size
+    src_w, src_h = image.size
+    scale = max(target_w / src_w, target_h / src_h)
+    new_w, new_h = int(src_w * scale + 0.5), int(src_h * scale + 0.5)
+    resized = image.resize((new_w, new_h), Image.LANCZOS)
+
+    if anchor == "right":
+        left = new_w - target_w
+    elif anchor == "left":
+        left = 0
+    else:
+        left = (new_w - target_w) // 2
+    top = (new_h - target_h) // 2
+    return resized.crop((left, top, left + target_w, top + target_h))
 
 
-def _build_tiles(raw_tiles):
-    """过滤掉取不到值的项，避免卡片上出现空白格子。"""
-    tiles = []
-    for label, value in raw_tiles:
+def _find_background(candidates, root):
+    for relative in candidates:
+        path = os.path.join(root, relative)
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def _base_canvas(bg_path):
+    """底图铺底；没有底图时退化为深色渐变，保证流程不中断。"""
+    if bg_path:
+        with Image.open(bg_path) as source:
+            canvas = _cover(source.convert("RGB"), (CARD_W, CARD_H))
+        canvas = canvas.convert("RGBA")
+    else:
+        top = Image.new("RGBA", (1, CARD_H))
+        pixels = top.load()
+        for y in range(CARD_H):
+            shade = 30 - int(18 * (y / max(1, CARD_H - 1)))
+            pixels[0, y] = (shade, shade + 4, shade + 10, 255)
+        canvas = top.resize((CARD_W, CARD_H))
+
+    # 左侧主渐变 + 底部次渐变
+    canvas.alpha_composite(
+        _horizontal_fade(CARD_W, CARD_H, [(0.0, 0.92), (0.45, 0.62), (0.72, 0.14), (1.0, 0.05)])
+    )
+    canvas.alpha_composite(
+        _vertical_fade(CARD_W, CARD_H, [(0.0, 0.85), (0.22, 0.45), (0.5, 0.0)])
+    )
+    return canvas
+
+
+def _build_stats(raw_stats):
+    """过滤掉取不到值的项，避免出现空占位。"""
+    stats = []
+    for label, value in raw_stats:
         if value is None or value == "":
             continue
-        tiles.append((label, str(value)))
-    return tiles
+        stats.append((label, str(value)))
+    return stats
 
 
-def _fit_font(text, max_width, draw, sizes, bold=True):
-    """数值过长时自动降字号，避免溢出格子。"""
-    for size in sizes:
-        font = _load_font(size, bold=bold)
-        if draw.textlength(text, font=font) <= max_width:
-            return font
-    return _load_font(sizes[-1], bold=bold)
-
-
-def render_card(out_path, badge, nickname, subtitle, raw_tiles,
-                accent=ACCENT_ARK, footer=None):
+def render_card(out_path, game, nickname, level, uid, raw_stats):
     """绘制一张名片。
 
-    badge    左上/右上角的游戏标识胶囊
-    nickname 昵称（左侧头像圈取它的首字）
-    subtitle 昵称下方的次要说明
-    raw_tiles [(标签, 数值)]，数值为 None 的格子会被自动跳过
-    footer   底部来源说明
+    game     用于定位底图（BACKGROUNDS 的键）
+    nickname 左上角昵称
+    level    跟在昵称后面的等级文本（如 "Lv.105"，可为空）
+    uid      昵称下的 UID 文本
+    raw_stats [(标签, 数值)]，数值为空则跳过；数值为大号白字，标签为小号白字
     """
-    tiles = _build_tiles(raw_tiles)
-    inner_w = CARD_W - PAD * 2
-    tile_rows = (len(tiles) + TILE_COLUMNS - 1) // TILE_COLUMNS if tiles else 0
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    bg_path = _find_background(BACKGROUNDS.get(game, []), root)
+    if not bg_path:
+        print(f"[{game}] 未找到底图（assets/{game}-bg.*），暂用深色渐变代替")
 
-    font_name = _load_font(36, bold=True)
-    font_sub = _load_font(17)
-    font_badge = _load_font(17, bold=True)
-    font_label = _load_font(14)
-    font_footer = _load_font(14)
-    font_avatar = _load_font(36, bold=True)
+    stats = _build_stats(raw_stats)
 
-    # ---- 先算总高度 ----
-    height = PAD + AVATAR
-    if tile_rows:
-        height += GAP_AFTER_HEADER
-        height += tile_rows * TILE_H + (tile_rows - 1) * TILE_GAP
-    if footer:
-        height += GAP_BEFORE_FOOTER + 18
-    height += PAD
+    image = _base_canvas(bg_path)
 
-    # ---- 底：渐变 + 圆角 + 描边 ----
-    image = _background(CARD_W, height, accent)
-    mask = _rounded_layer((CARD_W, height), RADIUS, fill=(255, 255, 255, 255))
-    image.putalpha(mask.getchannel("A"))
-    image.alpha_composite(
-        _rounded_layer(
-            (CARD_W, height), RADIUS,
-            outline=_blend(PANEL_BORDER, accent, 0.18), width=1,
-        )
-    )
+    # 所有文字先画到独立图层，再整体合成，这样半透明与投影才能正确混合
+    text_layer = Image.new("RGBA", (CARD_W, CARD_H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(text_layer)
 
-    draw = ImageDraw.Draw(image)
+    font_name = _load_font(NAME_SIZE, bold=True)
+    font_level = _load_font(LEVEL_SIZE, bold=True)
+    font_uid = _load_font(UID_SIZE)
+    font_number = _load_font(STAT_NUMBER_SIZE, bold=True)
+    font_label = _load_font(STAT_LABEL_SIZE)
 
-    # ---- 头部：头像圈 + 昵称 + 副标题 ----
-    ax, ay = PAD, PAD
-    avatar = _ellipse_layer(
-        (AVATAR, AVATAR),
-        fill=_blend(BG, accent, 0.20),
-        outline=_blend(accent, BG, 0.15),
-        width=2,
-    )
-    avatar_draw = ImageDraw.Draw(avatar)
-    avatar_draw.text(
-        (AVATAR / 2, AVATAR / 2 + 1), (nickname or "?")[:1],
-        font=font_avatar, fill=accent, anchor="mm",
-    )
-    image.alpha_composite(avatar, (ax, ay))
+    def put(x, y, text, font, alpha):
+        color = (*WHITE, alpha)
+        shadow = (0, 0, 0, int(alpha * SHADOW_ALPHA / 255))
+        draw.text((x + SHADOW_OFFSET, y + SHADOW_OFFSET), text, font=font, fill=shadow)
+        draw.text((x, y), text, font=font, fill=color)
 
-    text_x = ax + AVATAR + 18
-    draw.text((text_x, ay + 4), nickname or "未知", font=font_name, fill=FG, anchor="la")
-    if subtitle:
-        draw.text((text_x, ay + 52), subtitle, font=font_sub, fill=MUTED, anchor="la")
+    # ---- 左上：昵称 + 等级 ----
+    name = nickname or "未知"
+    put(PAD, NAME_Y, name, font_name, 255)
+    if level:
+        name_w = draw.textlength(name, font=font_name)
+        put(int(PAD + name_w + 12), NAME_Y + NAME_SIZE - LEVEL_SIZE - 2, level, font_level, 215)
 
-    # ---- 右上角：游戏标识胶囊 ----
-    badge_w = int(draw.textlength(badge, font=font_badge)) + 32
-    badge_h = 32
-    badge_x = CARD_W - PAD - badge_w
-    badge_y = ay + 24
-    image.alpha_composite(
-        _rounded_layer(
-            (badge_w, badge_h), badge_h // 2,
-            fill=_blend(BG, accent, 0.14),
-            outline=_blend(accent, BG, 0.25),
-            width=1,
-        ),
-        (badge_x, badge_y),
-    )
-    draw.text(
-        (badge_x + badge_w / 2, badge_y + badge_h / 2 + 1), badge,
-        font=font_badge, fill=accent, anchor="mm",
-    )
+    # ---- 昵称下方：UID ----
+    if uid:
+        put(PAD, UID_Y, uid, font_uid, 180)
 
-    # ---- 数据格 ----
-    y = PAD + AVATAR
-    if tile_rows:
-        y += GAP_AFTER_HEADER
-        tile_w = (inner_w - (TILE_COLUMNS - 1) * TILE_GAP) // TILE_COLUMNS
-        for index, (label, value) in enumerate(tiles):
-            row, col = divmod(index, TILE_COLUMNS)
-            x = PAD + col * (tile_w + TILE_GAP)
-            ty = y + row * (TILE_H + TILE_GAP)
+    # ---- 底部：一排「大号数字 + 小标签」 ----
+    if stats:
+        pitch = int(CARD_W * STAT_AREA_RATIO / max(1, len(stats)))
+        for index, (label, value) in enumerate(stats):
+            x = PAD + index * pitch
+            put(x, STAT_NUMBER_Y, value, font_number, 255)
+            put(x, STAT_LABEL_Y, label, font_label, 185)
 
-            image.alpha_composite(
-                _rounded_layer(
-                    (tile_w, TILE_H), 14,
-                    fill=PANEL,
-                    outline=_blend(PANEL_BORDER, accent, 0.10),
-                    width=1,
-                ),
-                (x, ty),
-            )
-            draw.text((x + 18, ty + 17), label, font=font_label, fill=MUTED, anchor="la")
-
-            value_font = _fit_font(value, tile_w - 36, draw, [27, 24, 21, 18, 16])
-            draw.text((x + 18, ty + 42), value, font=value_font, fill=FG, anchor="la")
-
-            # 强调色下划线，弱化「表格」观感
-            image.alpha_composite(
-                _rounded_layer((26, 3), 2, fill=_blend(accent, BG, 0.10)),
-                (x + 18, ty + TILE_H - 17),
-            )
-        y += tile_rows * TILE_H + (tile_rows - 1) * TILE_GAP
-
-    # ---- 底部来源 ----
-    if footer:
-        y += GAP_BEFORE_FOOTER
-        image.alpha_composite(
-            _ellipse_layer((6, 6), fill=_blend(accent, BG, 0.35)), (PAD, y + 6)
-        )
-        draw.text((PAD + 14, y), footer, font=font_footer, fill=MUTED, anchor="la")
+    image.alpha_composite(text_layer)
 
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
-    image.save(out_path, "PNG")
+    image.convert("RGB").save(out_path, "PNG")
     return out_path
 
 
 def render_arknights(summary, out_path):
     """明日方舟名片。"""
+    uid = summary.get("uid")
+    level = summary.get("level")
     return render_card(
         out_path=out_path,
-        badge="明日方舟",
+        game="arknights",
         nickname=summary.get("nickname"),
-        subtitle=f"UID {summary['uid']}" if summary.get("uid") else "",
-        accent=ACCENT_ARK,
-        footer="数据来自森空岛 · 每日自动更新",
-        raw_tiles=[
-            ("等级", _format(summary.get("level"))),
-            ("入职天数", _format(summary.get("register_days"), " 天")),
-            ("干员总数", _format(summary.get("operator_count"))),
-            ("六星干员", _format(summary.get("six_star_count"))),
-            ("精英二", _format(summary.get("elite_two_count"))),
-            ("主线进度", _format(summary.get("main_stage"))),
-            ("当前理智", _format(summary.get("ap"))),
-            ("皮肤保有", _format(summary.get("skin_count"))),
+        level=f"Lv.{level}" if level else "",
+        uid=f"UID: {uid}" if uid else "",
+        raw_stats=[
+            ("入职天数", summary.get("register_days")),
+            ("干员总数", summary.get("operator_count")),
+            ("六星干员", summary.get("six_star_count")),
+            ("精英二", summary.get("elite_two_count")),
+            ("皮肤保有", summary.get("skin_count")),
         ],
     )
 
 
 def render_endfield(summary, out_path):
     """终末地名片。"""
+    uid = summary.get("uid")
+    level = summary.get("level")
     return render_card(
         out_path=out_path,
-        badge="明日方舟：终末地",
+        game="endfield",
         nickname=summary.get("nickname"),
-        subtitle=summary.get("signature") or (
-            f"UID {summary['uid']}" if summary.get("uid") else ""
-        ),
-        accent=ACCENT_EF,
-        footer="数据来自 Enka.Network · 每日自动更新",
-        raw_tiles=[
-            ("等级", _format(summary.get("level"))),
-            ("世界等级", _format(summary.get("world_level"))),
-            ("创建天数", _format(summary.get("play_days"), " 天")),
-            ("干员总数", _format(summary.get("character_count"))),
-            ("武器总数", _format(summary.get("weapon_count"))),
-            ("档案总数", _format(summary.get("doc_count"))),
-            ("展示角色", _format(summary.get("showcase_count"))),
-            ("短 ID", _format(summary.get("short_id"))),
+        level=f"Lv.{level}" if level else "",
+        uid=f"UID: {uid}" if uid else "",
+        raw_stats=[
+            ("创建天数", summary.get("play_days")),
+            ("干员总数", summary.get("character_count")),
+            ("武器总数", summary.get("weapon_count")),
+            ("档案总数", summary.get("doc_count")),
+            ("世界等级", summary.get("world_level")),
         ],
     )

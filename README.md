@@ -3,7 +3,8 @@
   - 3D 贡献图由 .github/workflows/3d-contribute.yml 每天自动刷新
   - 游戏名片由 .github/workflows/profile-cards.yml 每天自动刷新
     （明日方舟走森空岛，需仓库 Secret: SKLAND_TOKEN；终末地走 Enka，只需 UID）
-  想改名片展示哪些数据，编辑 scripts/render.py 里的 raw_tiles 即可。
+  想改名片展示哪些数据，编辑 scripts/render.py 里的 raw_stats 即可。
+  名片的底图放在 assets/arknights-bg.* 与 assets/endfield-bg.*（建议 3:1 宽图）。
 -->
 
 ## 你好 👋
