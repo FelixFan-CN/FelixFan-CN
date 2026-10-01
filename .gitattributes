@@ -1,0 +1,5 @@
+# 统一换行符，避免 Windows 本地开发后 CI 里出现 CRLF 干扰
+* text=auto eol=lf
+*.png binary
+*.otf binary
+*.ttf binary

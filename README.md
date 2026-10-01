@@ -1,0 +1,38 @@
+<!--
+  主页 README。名片图片由 .github/workflows/profile-cards.yml 每天自动刷新，
+  数据源：明日方舟走森空岛（需仓库 Secret: SKLAND_TOKEN），终末地走 Enka（只需 UID）。
+  想改展示哪些数据，编辑 scripts/render.py 里的 raw_tiles 即可。
+-->
+
+## 你好 👋
+
+我是 FelixFan，一个喜欢折腾各种东西的开发者。
+
+## 游戏名片
+
+这两张卡片每天会自动从游戏数据源同步刷新。
+
+### 明日方舟
+
+![明日方舟名片](./assets/arknights-card.png)
+
+### 明日方舟：终末地
+
+![终末地名片](./assets/endfield-card.png)
+
+<details>
+<summary>关于这些数据的来源</summary>
+
+- **明日方舟**：通过森空岛（Skland）账号接口获取，展示等级、入职天数、干员数量、练度分布、主线进度、理智等。
+- **明日方舟：终末地**：通过 [Enka.Network](https://enka.network/?ef) 公开接口获取，仅包含游戏内「展示柜」中公开的角色。
+
+</details>
+
+## 总览
+
+![FelixFan-CN's Stats](https://github-readme-stats.vercel.app/api?username=FelixFan-CN&theme=vue-dark&show_icons=true&hide_border=true&count_private=true)
+![FelixFan-CN's Streak](https://streak-stats.demolab.com/?user=FelixFan-CN&theme=vue-dark&hide_border=true)
+
+## 与我联系
+
+- GitHub：[@FelixFan-CN](https://github.com/FelixFan-CN)
