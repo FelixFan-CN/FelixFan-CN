@@ -27,11 +27,10 @@ NAME_SIZE = 40
 LEVEL_SIZE = 22
 UID_Y = 88
 UID_SIZE = 18
-STAT_NUMBER_Y = 292
+STAT_NUMBER_Y = 282
 STAT_NUMBER_SIZE = 42
-STAT_LABEL_Y = 350
-STAT_LABEL_SIZE = 16
-STAT_AREA_RATIO = 0.72  # 底部一排统计只占左侧这些宽度，右侧留给立绘
+STAT_LABEL_Y = 342
+STAT_LABEL_SIZE = 22
 
 WHITE = (255, 255, 255)
 SHADOW_ALPHA = 150
@@ -231,9 +230,10 @@ def render_card(out_path, game, nickname, level, uid, raw_stats):
 
     # ---- 底部：一排「大号数字 + 小标签」 ----
     if stats:
-        pitch = int(CARD_W * STAT_AREA_RATIO / max(1, len(stats)))
+        # 等宽列：把内容区均分，保证每一项占据同样的宽度、整排左边缘与上方昵称对齐
+        pitch = (CARD_W - PAD * 2) / len(stats)
         for index, (label, value) in enumerate(stats):
-            x = PAD + index * pitch
+            x = int(PAD + index * pitch)
             put(x, STAT_NUMBER_Y, value, font_number, 255)
             put(x, STAT_LABEL_Y, label, font_label, 185)
 
