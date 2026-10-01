@@ -275,10 +275,10 @@ def render_endfield(summary, out_path):
         level=f"Lv.{level}" if level else "",
         uid=f"UID: {uid}" if uid else "",
         raw_stats=[
-            ("创建天数", summary.get("play_days")),
+            ("苏醒天数", summary.get("play_days")),
             ("干员总数", summary.get("character_count")),
             ("武器总数", summary.get("weapon_count")),
             ("档案总数", summary.get("doc_count")),
-            ("世界等级", summary.get("world_level")),
+            ("探索等级", summary.get("world_level")),
         ],
     )
