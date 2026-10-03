@@ -4,6 +4,7 @@
   - 一张游戏立绘铺满整张卡作为底图
   - 只用白色文字，不加任何色块、边框、图标
   - 左上角：昵称 + Lv.xx，下一行 UID
+  - 右上角：小号角标（如理智），右对齐
   - 底部：一排「大号数字 + 小标签」，等宽列从左侧紧凑排列，右侧留给立绘
   - 可读性靠「左侧渐隐 + 底部渐隐 + 文字投影」，不做任何模糊处理
 
@@ -31,6 +32,11 @@ STAT_NUMBER_SIZE = 42
 STAT_LABEL_Y = 342
 STAT_LABEL_SIZE = 22
 STAT_COLUMN_WIDTH = 152  # 每个数据项的等宽列宽：等宽保证对齐，收窄保证紧凑
+
+# 右上角小号角标（理智）：与昵称垂直居中，右对齐到内边距
+CORNER_SIZE = 22
+CORNER_Y = NAME_Y + (NAME_SIZE - CORNER_SIZE) // 2
+CORNER_ALPHA = 215
 
 WHITE = (255, 255, 255)
 SHADOW_ALPHA = 200
@@ -170,7 +176,7 @@ def _build_stats(raw_stats):
     return stats
 
 
-def render_card(out_path, game, nickname, level, uid, raw_stats):
+def render_card(out_path, game, nickname, level, uid, raw_stats, corner=""):
     """绘制一张名片。
 
     game     用于定位底图（BACKGROUNDS 的键）
@@ -178,6 +184,7 @@ def render_card(out_path, game, nickname, level, uid, raw_stats):
     level    跟在昵称后面的等级文本（如 "Lv.105"，可为空）
     uid      昵称下的 UID 文本
     raw_stats [(标签, 数值)]，数值为空则跳过；数值为大号白字，标签为小号白字
+    corner   右上角小号角标（如 "理智：15/207"），为空则不画
     """
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     bg_path = _find_background(BACKGROUNDS.get(game, []), root)
@@ -215,6 +222,12 @@ def render_card(out_path, game, nickname, level, uid, raw_stats):
     if uid:
         put(PAD, UID_Y, uid, font_uid, 180)
 
+    # ---- 右上角：小号角标 ----
+    if corner:
+        font_corner = _load_font(CORNER_SIZE)
+        corner_w = draw.textlength(corner, font=font_corner)
+        put(int(CARD_W - PAD - corner_w), CORNER_Y, corner, font_corner, CORNER_ALPHA)
+
     # ---- 底部：一排「大号数字 + 小标签」 ----
     if stats:
         # 等宽列从左侧紧凑排列：列宽固定保证对齐，不铺满卡片，右侧留给立绘
@@ -234,12 +247,16 @@ def render_arknights(summary, out_path):
     """明日方舟名片。"""
     uid = summary.get("uid")
     level = summary.get("level")
+    ap_current = summary.get("ap_current")
+    ap_max = summary.get("ap_max")
+    corner = f"理智：{ap_current}/{ap_max}" if ap_current is not None and ap_max is not None else ""
     return render_card(
         out_path=out_path,
         game="arknights",
         nickname=summary.get("nickname"),
         level=f"Lv.{level}" if level else "",
         uid=f"UID: {uid}" if uid else "",
+        corner=corner,
         raw_stats=[
             ("入职天数", summary.get("register_days")),
             ("干员总数", summary.get("operator_count")),

@@ -56,6 +56,8 @@ def summarize(payload):
         "register_days": _days_since(status.get("registerTs")),
         "main_stage": _pick(status, "mainStageProgress", default=""),
         "ap": ap_text,
+        "ap_current": ap_current,
+        "ap_max": ap_max,
         "operator_count": len(chars) or status.get("charCnt"),
         "six_star_count": six_star or None,
         "elite_two_count": elite_two or None,
