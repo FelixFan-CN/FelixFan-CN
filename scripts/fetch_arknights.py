@@ -5,6 +5,9 @@ import time
 # 森空岛 charInfoMap 里 rarity 为 0 起始索引：0 = 一星 … 5 = 六星
 SIX_STAR_INDEX = 5
 
+# 理智自然回复：每 6 分钟恢复 1 点
+AP_RECOVER_SECONDS = 360
+
 
 def _pick(mapping, *keys, default=None):
     for key in keys:
@@ -18,6 +21,27 @@ def _days_since(timestamp):
     if not timestamp:
         return None
     return max(0, int((time.time() - int(timestamp)) // 86400))
+
+
+def _current_ap(ap):
+    """算出此刻的真实理智。
+
+    接口返回的 current 是 lastApAddTime 那一刻的值，不含之后自然回复的部分，
+    所以要按「每 6 分钟 +1」往后推，推到上限就封顶（满理智不再增长）。
+    拿不到 lastApAddTime 时，退化为直接用 current。
+    """
+    if not isinstance(ap, dict):
+        return None, None
+    current = ap.get("current")
+    maximum = ap.get("max")
+    if current is None or maximum is None:
+        return None, None
+
+    last_add = ap.get("lastApAddTime")
+    if last_add:
+        elapsed = max(0, int(time.time()) - int(last_add))
+        current = min(int(maximum), int(current) + elapsed // AP_RECOVER_SECONDS)
+    return current, maximum
 
 
 def summarize(payload):
@@ -42,12 +66,8 @@ def summarize(payload):
     daily = routine.get("daily") or {}
     weekly = routine.get("weekly") or {}
 
-    ap_current = ap.get("current")
-    ap_max = ap.get("max")
-    if ap_current is not None and ap_max is not None:
-        ap_text = f"{ap_current} / {ap_max}"
-    else:
-        ap_text = None
+    ap_current, ap_max = _current_ap(ap)
+    ap_text = f"{ap_current} / {ap_max}" if ap_current is not None else None
 
     return {
         "nickname": _pick(status, "name", default="博士"),
