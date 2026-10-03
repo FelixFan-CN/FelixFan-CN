@@ -47,6 +47,12 @@ jobs:
           if git diff --cached --quiet; then
             echo "名片无变化，跳过提交"
           else
+            # 递增 README 里图片链接的 ?v=，让 GitHub 图片 CDN（camo）重新取图；
+            # 只在内容变化时递增，避免每次运行都产生无意义的提交
+            current=$(grep -oE 'arknights-card\.png\?v=[0-9]+' README.md | grep -oE '[0-9]+$' || true)
+            next=$(( ${current:-0} + 1 ))
+            sed -i -E "s#(assets/(arknights|endfield)-card\.png)(\?v=[0-9]+)?#\1?v=${next}#g" README.md
+            git add README.md
             git commit -m "chore: update profile cards"
             git push
           fi
