@@ -27,8 +27,11 @@ def _current_ap(ap):
     """算出此刻的真实理智。
 
     接口返回的 current 是 lastApAddTime 那一刻的值，不含之后自然回复的部分，
-    所以要按「每 6 分钟 +1」往后推，推到上限就封顶（满理智不再增长）。
-    拿不到 lastApAddTime 时，退化为直接用 current。
+    所以要按「每 6 分钟 +1」往后推。三种情形：
+      - current 已达到或超过上限：理智恢复药、源石会把理智顶到上限之上，
+        此时自然回复不生效，必须原样返回，绝不能压回上限，否则溢出的部分会算丢；
+      - current 低于上限：往后推算，回满即封顶不再增长；
+      - 拿不到 lastApAddTime：退化为直接用 current。
     """
     if not isinstance(ap, dict):
         return None, None
@@ -37,10 +40,15 @@ def _current_ap(ap):
     if current is None or maximum is None:
         return None, None
 
+    current = int(current)
+    maximum = int(maximum)
+    if current >= maximum:
+        return current, maximum
+
     last_add = ap.get("lastApAddTime")
     if last_add:
         elapsed = max(0, int(time.time()) - int(last_add))
-        current = min(int(maximum), int(current) + elapsed // AP_RECOVER_SECONDS)
+        current = min(maximum, current + elapsed // AP_RECOVER_SECONDS)
     return current, maximum
 
 
