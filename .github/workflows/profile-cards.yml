@@ -1,9 +1,10 @@
 name: Update profile cards
 
 on:
-  # 每小时自动刷新（cron 用 UTC）。刻意错开整点：GitHub 在整点前后负载最高，容易被延迟
+  # 每 10 分钟尝试一次。GitHub 的 schedule 是「尽力而为」：高频 cron 会被大量丢弃
+  # （实测每小时一次时 8 次只跑了 1 次），所以刻意加密，靠次数对冲丢单。
   schedule:
-    - cron: "7 * * * *"
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 permissions:
