@@ -44,16 +44,36 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add assets
-          if git diff --cached --quiet; then
-            echo "名片无变化，跳过提交"
-          else
+
+          # 先站到远端最新提交再提交。触发是每 10 分钟一次，只要某次运行被排队拖慢，
+          # main 就会在 checkout 之后继续前进，这时直接 push 会因非快进而被拒，
+          # 整次运行被判失败（10-05 晚上连续失败就是这个原因）。
+          # 用 --mixed 是为保住工作区里刚渲染好的图，只把 HEAD 与暂存区挪到最新 main。
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git reset --mixed origin/main
+
+            git add assets
+            if git diff --cached --quiet; then
+              echo "名片无变化，跳过提交"
+              exit 0
+            fi
+
             # 递增 README 里图片链接的 ?v=，让 GitHub 图片 CDN（camo）重新取图；
-            # 只在内容变化时递增，避免每次运行都产生无意义的提交
-            current=$(grep -oE 'arknights-card\.png\?v=[0-9]+' README.md | grep -oE '[0-9]+$' || true)
+            # 只在内容变化时递增，避免每次运行都产生无意义的提交。
+            # 基准取远端 README 的当前值，确保新图一定对应到一个没用过的版本号
+            current=$(git show origin/main:README.md | grep -oE 'arknights-card\.png\?v=[0-9]+' | grep -oE '[0-9]+$' || true)
             next=$(( ${current:-0} + 1 ))
             sed -i -E "s#(assets/(arknights|endfield)-card\.png)(\?v=[0-9]+)?#\1?v=${next}#g" README.md
             git add README.md
+
             git commit -m "chore: update profile cards"
-            git push
-          fi
+            if git push; then
+              exit 0
+            fi
+            echo "push 被拒：远端又前进了，重新同步后重试（第 ${attempt} 次）"
+            sleep 3
+          done
+
+          echo "连续 3 次 push 都没成功，放弃本次提交"
+          exit 1
