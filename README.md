@@ -25,11 +25,11 @@
 
 ### 明日方舟
 
-![明日方舟名片](./assets/arknights-card.png?v=6877)
+![明日方舟名片](./assets/arknights-card.png?v=6878)
 
 ### 明日方舟：终末地
 
-![终末地名片](./assets/endfield-card.png?v=6877)
+![终末地名片](./assets/endfield-card.png?v=6878)
 
 <details>
 <summary>关于这些数据的来源</summary>
